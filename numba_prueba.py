@@ -12,7 +12,6 @@ import math
 import os
 import matplotlib.pyplot as plt
 
- 
 @guvectorize([(float64[:,:], float64[:], float64[:,:], int64, float64, float64[:,:])], '(K,NT),(Nc),(M,N),(),()->(M,Nc)', target='parallel', nopython=True)
 def calculateCinMinibatch(W,auxi,v,n,B,c):
     M,N = v.shape
@@ -31,7 +30,7 @@ def calculateCinMinibatch(W,auxi,v,n,B,c):
                 aux2 += W[miu][N+alpha] * aux1
             c[A][alpha] = math.tanh(B*aux2)
 
-@jit(nopython=True, parallel=True)
+#@jit(nopython=True, parallel=True)
 def calculateCinMinibatchJit(W,v,n,B,c):
     M,N = v.shape
     K,Nc = W.shape[0],(W.shape[1]-N)
@@ -77,8 +76,8 @@ def main():
     p = 0.9 # 0.6 <= p >= 0.95 Momentum
     
     B = 1/math.pow(T,n)
-    
     f = np.vectorize(lambda x:0 if x<0 else np.float_power(x,n), otypes=[float])    
+    
     
     # Read digits from MNIST database
     from mnist import MNIST
@@ -108,7 +107,7 @@ def main():
     V = np.concatenate((X[:, np.random.choice(nExamplesPerClass, int(K/Nc), replace=False)].reshape(K,N), np.array(sorted((np.identity(Nc)*2-1).tolist() * int(K/Nc), reverse=True))),axis=1)
     np.random.shuffle(V)
     
-    nEpochs = 3000
+    nEpochs = 1000
     
     eo = 0.01 # 0.01<= eo >= 0.04
     fe = 0.998
@@ -120,20 +119,21 @@ def main():
     error_training = np.zeros((nEpochs))+100
     error_testing = np.zeros((nEpochs))+100
     error_obj = np.zeros((nEpochs))+100
-    dW = np.zeros((K,N+Nc))
-    c = np.zeros((M,Nc))
+    memoriestograph = np.random.randint(K,size=25)
+    
+    
     for epoch in range(nEpochs):
         e = eo*np.float_power(fe,epoch) 
         obj_func = 0
-        
         for t in range(nUpdates):
             print("epoch =", epoch+1, ",update =",t)
+            c = np.zeros((M,Nc))
+            dW = np.zeros((K,N+Nc))
             v = np.array([i[t*imagesPerClassInMinibatch:t*imagesPerClassInMinibatch+imagesPerClassInMinibatch] for i in X]).reshape(M, N)
             
             ## MINIBATCH
             calculateCinMinibatchJit(W,v,n,B,c)
             calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
-            
             for miu in range(K):
                 for I in range(N+Nc):
                     V[miu][I] = p*V[miu][I] - dW[miu][I]
@@ -143,6 +143,7 @@ def main():
                     elif W[miu][I] > 1:
                         W[miu][I] = 1
             obj_func += np.sum(np.power(c-tX,2*m))
+        
         
         confusion_matrix = np.zeros((Nc,Nc), dtype=int)
         for i in range(Nc):
@@ -159,8 +160,8 @@ def main():
         print("training error",(1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100)
         error_training[epoch] = (1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100
         
-        confusion_matrix = np.zeros((Nc,Nc), dtype=int)
         
+        confusion_matrix = np.zeros((Nc,Nc), dtype=int)
         for i in range(Nc):
             for j in range(len(Te[i])):
                 tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
@@ -177,12 +178,18 @@ def main():
         
         error_obj[epoch] = obj_func
         print(obj_func)
-    
-    np.save('error_training', error_training, delimiter=",")
-    np.save('error_testing', error_testing, delimiter=",")
-    np.save('error_obj', error_obj, delimiter=",")
+        
+        for i in memoriestograph:
+            plt.imsave(str(i)+"epoch"+str(epoch),W[i,0:N].reshape(width, height), vmin=-1, vmax=1,  cmap="coolwarm", format="png")
+         
+         
+    np.savetxt('error_training', error_training, delimiter=",")
+    np.savetxt('error_testing', error_testing, delimiter=",")
+    np.savetxt('error_obj', error_obj, delimiter=",")
     np.savetxt('W', W, delimiter=",")
     print("END TRAINING")
+    
+    
 
 
 
