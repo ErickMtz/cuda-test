@@ -46,24 +46,23 @@ def calculateCinMinibatchJit(W,v,n,B,c):
         
 
 #@jit(nopython=True, parallel=True)
-def calculateCinMinibatchJit2(W,v,n,B,c):
+def calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW):
     M,N = v.shape
     K,Nc = W.shape[0],(W.shape[1]-N)
-    for A in range(M):
-        aux = np.dot(W[0:K,0:N], v[A])
-        for i in range(len(aux)):
-            if aux[i] >= 0:    
-                aux[i] = math.pow(aux[i], n)
+    aux1 = np.power(c - tX, 2*m-1) * (1 - np.power(c, 2))
+    for miu in range(K):
+        aux2 = np.dot(W[miu,0:N], v)
+        for i in range(len(aux2)):
+            if aux2[i] >= 0:    
+                aux2[i] = math.pow(aux2[i], n-1)
             else:
-                aux[i] = 0
-        c[A] = B * np.sum(W[0:K,N:N+Nc] * (aux).reshape(K,1),axis=0)
-        for i in range(Nc):
-            c[A][i] = math.tanh(c[A][i])
-
+                aux2[i] = 0
+        dW[miu,0:N] = 2*m*B*n*np.sum(np.sum(aux1 * W[miu,N:N+Nc] * aux2.reshape(M,1),axis=1).reshape(M,1) * v, axis=0)
+        dW[miu,N:N+Nc]= 2*m*B*np.sum(aux1 * (aux2*np.dot(W[miu,0:N], v)).reshape(M,1), axis=0)
 
 
 #@jit(nopython=True, parallel=True)
-def calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW):
+def calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW):
     M,N = v.shape
     K,Nc = W.shape[0],(W.shape[1]-N)
     aux1 = np.power(c - tX, 2*m-1) * (1 - np.power(c, 2))
@@ -76,6 +75,9 @@ def calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW):
                 aux2[i] = 0
         dW[miu,0:N] = 2*m*B*n*np.sum(np.sum(aux1 * W[miu,N:N+Nc] * aux2.reshape(M,1),axis=1).reshape(M,1) * v, axis=0)
         dW[miu,N:N+Nc]= 2*m*B*np.sum(aux1 * (aux2*np.dot(W[miu,0:N], np.transpose(v))).reshape(M,1), axis=0)
+
+
+
 
 
 def main():
@@ -149,20 +151,21 @@ def main():
             v = np.array([i[t*imagesPerClassInMinibatch:t*imagesPerClassInMinibatch+imagesPerClassInMinibatch] for i in X]).reshape(M, N)
             
             ## MINIBATCH
-            start = time.time()
             calculateCinMinibatchJit(W,v,n,B,c)
+            
+            start = time.time()
+            calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
             end = time.time()
             print("Elapsed (after compilation) = %s" % (end - start))
             
-            c2 = np.zeros((M,Nc))
+            dW2 = np.zeros((K,N+Nc))
             start = time.time()
-            calculateCinMinibatchJit2(W,v,n,B,c2)
+            calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW2)
             end = time.time()
-            print("C2 Elapsed (after compilation) = %s" % (end - start))
+            print("dW2 Elapsed (after compilation) = %s" % (end - start))
             
+            print(np.array_equal(dW,dW2))
             
-            
-            calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
             for miu in range(K):
                 for I in range(N+Nc):
                     V[miu][I] = p*V[miu][I] - dW[miu][I]
