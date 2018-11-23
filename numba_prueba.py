@@ -6,8 +6,8 @@ Created on Tue Nov 13 14:47:35 2018
 @author: erick
 """
 import numpy as np     
-from timeit import default_timer as timer
-from numba import guvectorize, float64, int64, jit
+import time
+from numba import guvectorize, float64, int64, jit, prange
 import math
 import os
 import matplotlib.pyplot as plt
@@ -30,12 +30,27 @@ def calculateCinMinibatch(W,auxi,v,n,B,c):
                 aux2 += W[miu][N+alpha] * aux1
             c[A][alpha] = math.tanh(B*aux2)
 
-#@jit(nopython=True, parallel=True)
+
+@jit(nopython=True, parallel=True, nogil=True)
 def calculateCinMinibatchJit(W,v,n,B,c):
     M,N = v.shape
     K,Nc = W.shape[0],(W.shape[1]-N)
+    for A in prange(M):
+        aux = np.dot(W[0:K,0:N], v[A])
+        for i in prange(len(aux)):
+            if aux[i] >= 0:    
+                aux[i] = math.pow(aux[i], n)
+            else:
+                aux[i] = 0
+        c[A] = np.tanh(B * np.sum(W[0:K,N:N+Nc] * aux.reshape(K,1),axis=0))
+        
+
+#@jit(nopython=True, parallel=True)
+def calculateCinMinibatchJit2(W,v,n,B,c):
+    M,N = v.shape
+    K,Nc = W.shape[0],(W.shape[1]-N)
     for A in range(M):
-        aux = np.dot(W[0:K,0:N], np.transpose(v[A]))
+        aux = np.dot(W[0:K,0:N], v[A])
         for i in range(len(aux)):
             if aux[i] >= 0:    
                 aux[i] = math.pow(aux[i], n)
@@ -45,7 +60,9 @@ def calculateCinMinibatchJit(W,v,n,B,c):
         for i in range(Nc):
             c[A][i] = math.tanh(c[A][i])
 
-@jit(nopython=True, parallel=True)
+
+
+#@jit(nopython=True, parallel=True)
 def calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW):
     M,N = v.shape
     K,Nc = W.shape[0],(W.shape[1]-N)
@@ -132,7 +149,19 @@ def main():
             v = np.array([i[t*imagesPerClassInMinibatch:t*imagesPerClassInMinibatch+imagesPerClassInMinibatch] for i in X]).reshape(M, N)
             
             ## MINIBATCH
+            start = time.time()
             calculateCinMinibatchJit(W,v,n,B,c)
+            end = time.time()
+            print("Elapsed (after compilation) = %s" % (end - start))
+            
+            c2 = np.zeros((M,Nc))
+            start = time.time()
+            calculateCinMinibatchJit2(W,v,n,B,c2)
+            end = time.time()
+            print("C2 Elapsed (after compilation) = %s" % (end - start))
+            
+            
+            
             calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
             for miu in range(K):
                 for I in range(N+Nc):
@@ -189,28 +218,6 @@ def main():
     np.savetxt('W', W, delimiter=",")
     print("END TRAINING")
     
-    
-
-
-
-
-
-
-
-
-#
-#    t=0
-#    v = np.array([i[t*imagesPerClassInMinibatch:t*imagesPerClassInMinibatch+imagesPerClassInMinibatch] for i in X]).reshape(M, N)
-#    print(W.shape)
-#    c = np.zeros((M,Nc)) - 1
-#    dW = np.zeros((K,N+Nc))
-#    start = timer()
-#    calculateCinMinibatchJit(W,v,n,B,c)
-#    calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
-#    vectoradd_time = timer() - start
-#    print("Jit took %f seconds" % vectoradd_time)
-#    
-
     
     
 
