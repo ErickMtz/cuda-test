@@ -7,28 +7,36 @@ Created on Tue Nov 13 14:47:35 2018
 """
 import numpy as np     
 import time
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Nov 13 14:47:35 2018
+@author: erick
+"""
+import numpy as np     
+import time
 from numba import guvectorize, float64, int64, jit, prange
 import math
 import os
 import matplotlib.pyplot as plt
-
-@guvectorize([(float64[:,:], float64[:], float64[:,:], int64, float64, float64[:,:])], '(K,NT),(Nc),(M,N),(),()->(M,Nc)', target='parallel', nopython=True)
-def calculateCinMinibatch(W,auxi,v,n,B,c):
-    M,N = v.shape
-    K,Nc = W.shape[0],(W.shape[1]-N)
-    aux = 0
-    for A in range(M):
-        for alpha in range(Nc):
-            aux2 = 0
-            for miu in range(K):
-                aux1 = 0
-                for i in range(N):
-                    if W[miu][i] * v[A][i] >= 0:
-                        aux += math.pow(W[miu][i] * v[A][i], n)
-                    else: 
-                        aux = 0
-                aux2 += W[miu][N+alpha] * aux1
-            c[A][alpha] = math.tanh(B*aux2)
+#
+#@guvectorize([(float64[:,:], float64[:], float64[:,:], int64, float64, float64[:,:])], '(K,NT),(Nc),(M,N),(),()->(M,Nc)', target='parallel', nopython=True)
+#def calculateCinMinibatch(W,auxi,v,n,B,c):
+#    M,N = v.shape
+#    K,Nc = W.shape[0],(W.shape[1]-N)
+#    aux = 0
+#    for A in range(M):
+#        for alpha in range(Nc):
+#            aux2 = 0
+#            for miu in range(K):
+#                aux1 = 0
+#                for i in range(N):
+#                    if W[miu][i] * v[A][i] >= 0:
+#                        aux += math.pow(W[miu][i] * v[A][i], n)
+#                    else: 
+#                        aux = 0
+#                aux2 += W[miu][N+alpha] * aux1
+#            c[A][alpha] = math.tanh(B*aux2)
 
 
 @jit(nopython=True, parallel=True, nogil=True)
@@ -44,31 +52,28 @@ def calculateCinMinibatchJit(W,v,n,B,c):
                 aux[i] = 0
         c[A] = np.tanh(B * np.sum(W[0:K,N:N+Nc] * aux.reshape(K,1),axis=0))
         
+@jit(nopython=True, nogil=True)
+def calculateCinMinibatchJit2(W,v,n,B,c):
+    M,N = v.shape
+    K,Nc = W.shape[0],(W.shape[1]-N)
+    for A in prange(M):
+        aux = np.dot(W[0:K,0:N], v[A])
+        for i in prange(len(aux)):
+            if aux[i] >= 0:    
+                aux[i] = math.pow(aux[i], n)
+            else:
+                aux[i] = 0
+        c[A] = np.tanh(B * np.sum(W[0:K,N:N+Nc] * aux.reshape(K,1),axis=0))
+        
 
-#@jit(nopython=True, parallel=True)
+@jit(nopython=True,parallel=True, nogil=True)
 def calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW):
     M,N = v.shape
     K,Nc = W.shape[0],(W.shape[1]-N)
     aux1 = np.power(c - tX, 2*m-1) * (1 - np.power(c, 2))
-    for miu in range(K):
-        aux2 = np.dot(W[miu,0:N], v)
-        for i in range(len(aux2)):
-            if aux2[i] >= 0:    
-                aux2[i] = math.pow(aux2[i], n-1)
-            else:
-                aux2[i] = 0
-        dW[miu,0:N] = 2*m*B*n*np.sum(np.sum(aux1 * W[miu,N:N+Nc] * aux2.reshape(M,1),axis=1).reshape(M,1) * v, axis=0)
-        dW[miu,N:N+Nc]= 2*m*B*np.sum(aux1 * (aux2*np.dot(W[miu,0:N], v)).reshape(M,1), axis=0)
-
-
-#@jit(nopython=True, parallel=True)
-def calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW):
-    M,N = v.shape
-    K,Nc = W.shape[0],(W.shape[1]-N)
-    aux1 = np.power(c - tX, 2*m-1) * (1 - np.power(c, 2))
-    for miu in range(K):
+    for miu in prange(K):
         aux2 = np.dot(W[miu,0:N], np.transpose(v))
-        for i in range(len(aux2)):
+        for i in prange(len(aux2)):
             if aux2[i] >= 0:    
                 aux2[i] = math.pow(aux2[i], n-1)
             else:
@@ -77,7 +82,34 @@ def calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW):
         dW[miu,N:N+Nc]= 2*m*B*np.sum(aux1 * (aux2*np.dot(W[miu,0:N], np.transpose(v))).reshape(M,1), axis=0)
 
 
+@jit(nopython=True, nogil=True)
+def calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW):
+    M,N = v.shape
+    K,Nc = W.shape[0],(W.shape[1]-N)
+    aux1 = np.power(c - tX, 2*m-1) * (1 - np.power(c, 2))
+    for miu in prange(K):
+        aux2 = np.dot(W[miu,0:N], np.transpose(v))
+        for i in prange(len(aux2)):
+            if aux2[i] >= 0:    
+                aux2[i] = math.pow(aux2[i], n-1)
+            else:
+                aux2[i] = 0
+        dW[miu,0:N] = 2*m*B*n*np.sum(np.sum(aux1 * W[miu,N:N+Nc] * aux2.reshape(M,1),axis=1).reshape(M,1) * v, axis=0)
+        dW[miu,N:N+Nc]= 2*m*B*np.sum(aux1 * (aux2*np.dot(W[miu,0:N], np.transpose(v))).reshape(M,1), axis=0)
 
+
+@jit(nopython=True, parallel=True, nogil=True)
+def updateW(V,dW,e,p,Nc,W):
+    K,N = W.shape[0],(W.shape[1]-Nc)
+    for miu in prange(K):
+        for I in prange(N+Nc):
+            V[miu][I] = p*V[miu][I] - dW[miu][I]
+            W[miu][I] = W[miu][I] + (e*V[miu][I]/np.max(np.abs(V[miu])))   
+            if W[miu][I] < -1:
+                W[miu][I] = -1
+            elif W[miu][I] > 1:
+                W[miu][I] = 1
+            
 
 
 def main():
@@ -126,7 +158,7 @@ def main():
     V = np.concatenate((X[:, np.random.choice(nExamplesPerClass, int(K/Nc), replace=False)].reshape(K,N), np.array(sorted((np.identity(Nc)*2-1).tolist() * int(K/Nc), reverse=True))),axis=1)
     np.random.shuffle(V)
     
-    nEpochs = 1000
+    nEpochs = 3000
     
     eo = 0.01 # 0.01<= eo >= 0.04
     fe = 0.998
@@ -151,12 +183,21 @@ def main():
             v = np.array([i[t*imagesPerClassInMinibatch:t*imagesPerClassInMinibatch+imagesPerClassInMinibatch] for i in X]).reshape(M, N)
             
             ## MINIBATCH
+            start = time.time()
             calculateCinMinibatchJit(W,v,n,B,c)
+            end = time.time()
+            print("C Elapsed (after compilation) = %s" % (end - start))
+            
+            c2 = c = np.zeros((M,Nc))
+            start = time.time()
+            calculateCinMinibatchJit2(W,v,n,B,c2)
+            end = time.time()
+            print("C2 Elapsed (after compilation) = %s" % (end - start))
             
             start = time.time()
             calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
             end = time.time()
-            print("Elapsed (after compilation) = %s" % (end - start))
+            print("dW Elapsed (after compilation) = %s" % (end - start))
             
             dW2 = np.zeros((K,N+Nc))
             start = time.time()
@@ -164,18 +205,12 @@ def main():
             end = time.time()
             print("dW2 Elapsed (after compilation) = %s" % (end - start))
             
-            print(np.array_equal(dW,dW2))
             
-            for miu in range(K):
-                for I in range(N+Nc):
-                    V[miu][I] = p*V[miu][I] - dW[miu][I]
-                    W[miu][I] = W[miu][I] + (e*V[miu][I]/np.max(abs(V[miu])))   
-                    if W[miu][I] < -1:
-                        W[miu][I] = -1
-                    elif W[miu][I] > 1:
-                        W[miu][I] = 1
+            start = time.time()
+            updateW(V,dW,e,p,Nc,W)
             obj_func += np.sum(np.power(c-tX,2*m))
-        
+            end = time.time()
+            print("updateW Elapsed (after compilation) = %s" % (end - start))
         
         confusion_matrix = np.zeros((Nc,Nc), dtype=int)
         for i in range(Nc):
