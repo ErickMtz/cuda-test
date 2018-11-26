@@ -12,24 +12,6 @@ import math
 import os
 import matplotlib.pyplot as plt
 
-@guvectorize([(float64[:,:], float64[:], float64[:,:], int64, float64, float64[:,:])], '(K,NT),(Nc),(M,N),(),()->(M,Nc)', target='parallel', nopython=True)
-def calculateCinMinibatch(W,auxi,v,n,B,c):
-    M,N = v.shape
-    K,Nc = W.shape[0],(W.shape[1]-N)
-    aux = 0
-    for A in prange(M):
-        for alpha in prange(Nc):
-            aux2 = 0
-            for miu in prange(K):
-                aux1 = 0
-                for i in prange(N):
-                    if W[miu][i] * v[A][i] >= 0:
-                        aux += math.pow(W[miu][i] * v[A][i], n)
-                    else: 
-                        aux = 0
-                aux2 += W[miu][N+alpha] * aux1
-            c[A][alpha] = math.tanh(B*aux2)
-
 
 @jit(nopython=True, parallel=True, nogil=True)
 def calculateCinMinibatchJit(W,v,n,B,c):
@@ -182,7 +164,7 @@ def main():
             
             c2 = c = np.zeros((M,Nc))
             start = time.time()
-            calculateCinMinibatch(W,W[0,N:N+Nc],v,n,B,c2)
+            calculateCinMinibatchJit2(W,W[0,N:N+Nc],v,n,B,c2)
             end = time.time()
             print("C2 Elapsed (after compilation) = %s" % (end - start))
             
