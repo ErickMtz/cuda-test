@@ -132,7 +132,7 @@ def main():
     V = np.concatenate((X[:, np.random.choice(nExamplesPerClass, int(K/Nc), replace=False)].reshape(K,N), np.array(sorted((np.identity(Nc)*2-1).tolist() * int(K/Nc), reverse=True))),axis=1)
     np.random.shuffle(V)
     
-    nEpochs = 3000
+    nEpochs = 300
     
     eo = 0.01 # 0.01<= eo >= 0.04
     fe = 0.998
@@ -151,73 +151,53 @@ def main():
         e = eo*np.float_power(fe,epoch) 
         obj_func = 0
         for t in range(nUpdates):
-            print("epoch =", epoch+1, ",update =",t)
+            start = time.time()
+            print("epoch =", epoch+1, ",update =",t+1)
             c = np.zeros((M,Nc))
             dW = np.zeros((K,N+Nc))
             v = np.array([i[t*imagesPerClassInMinibatch:t*imagesPerClassInMinibatch+imagesPerClassInMinibatch] for i in X]).reshape(M, N)
             
             ## MINIBATCH
-            start = time.time()
+            
             calculateCinMinibatchJit(W,v,n,B,c)
-            end = time.time()
-            print("C Elapsed (after compilation) = %s" % (end - start))
-            
-            c2 = c = np.zeros((M,Nc))
-            start = time.time()
-            calculateCinMinibatchJit2(W,W[0,N:N+Nc],v,n,B,c2)
-            end = time.time()
-            print("C2 Elapsed (after compilation) = %s" % (end - start))
-            
-            start = time.time()
-            calculatedWinMinibatchJit(c,tX,m,W,v,B,n,dW)
-            end = time.time()
-            print("dW Elapsed (after compilation) = %s" % (end - start))
-            
-            dW2 = np.zeros((K,N+Nc))
-            start = time.time()
-            calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW2)
-            end = time.time()
-            print("dW2 Elapsed (after compilation) = %s" % (end - start))
-            
-
-
-            start = time.time()
+            calculatedWinMinibatchJit2(c,tX,m,W,v,B,n,dW)
             updateW(V,dW,e,p,Nc,W)
+            
             obj_func += np.sum(np.power(c-tX,2*m))
             end = time.time()
-            print("updateW Elapsed (after compilation) = %s" % (end - start))
+            print("Minibatch time %s" % (end - start))
         
-        confusion_matrix = np.zeros((Nc,Nc), dtype=int)
-        for i in prange(Nc):
-            for j in prange(len(X[i])):
-                tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
-                c = np.zeros(Nc) - 1 
-                for alpha in prange(Nc):
-                    tsn[alpha] = 1
-                    eng1 = np.sum(f(np.dot(np.concatenate((X[i][j], tsn), axis=0), np.transpose(W))))
-                    tsn[alpha] = -1
-                    eng2 = np.sum(f(np.dot(np.concatenate((X[i][j], tsn), axis=0), np.transpose(W))))
-                    c[alpha] = np.tanh(B*(eng1-eng2))
-                confusion_matrix[i][np.argmax(c)] += 1
-        print("training error",(1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100)
-        error_training[epoch] = (1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100
-        
-        
-        confusion_matrix = np.zeros((Nc,Nc), dtype=int)
-        for i in prange(Nc):
-            for j in prange(len(Te[i])):
-                tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
-                c = np.zeros(Nc) - 1 
-                for alpha in prange(Nc):
-                    tsn[alpha] = 1
-                    eng1 = np.sum(f(np.dot(np.concatenate((Te[i][j], tsn), axis=0), np.transpose(W))))
-                    tsn[alpha] = -1
-                    eng2 = np.sum(f(np.dot(np.concatenate((Te[i][j], tsn), axis=0), np.transpose(W))))
-                    c[alpha] = np.tanh(B*(eng1-eng2))
-                confusion_matrix[i][np.argmax(c)] += 1
-        print("testing error",(1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100)
-        error_testing[epoch] = (1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100
-        
+#        confusion_matrix = np.zeros((Nc,Nc), dtype=int)
+#        for i in prange(Nc):
+#            for j in prange(len(X[i])):
+#                tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
+#                c = np.zeros(Nc) - 1 
+#                for alpha in prange(Nc):
+#                    tsn[alpha] = 1
+#                    eng1 = np.sum(f(np.dot(np.concatenate((X[i][j], tsn), axis=0), np.transpose(W))))
+#                    tsn[alpha] = -1
+#                    eng2 = np.sum(f(np.dot(np.concatenate((X[i][j], tsn), axis=0), np.transpose(W))))
+#                    c[alpha] = np.tanh(B*(eng1-eng2))
+#                confusion_matrix[i][np.argmax(c)] += 1
+#        print("training error",(1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100)
+#        error_training[epoch] = (1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100
+#        
+#        
+#        confusion_matrix = np.zeros((Nc,Nc), dtype=int)
+#        for i in prange(Nc):
+#            for j in prange(len(Te[i])):
+#                tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
+#                c = np.zeros(Nc) - 1 
+#                for alpha in prange(Nc):
+#                    tsn[alpha] = 1
+#                    eng1 = np.sum(f(np.dot(np.concatenate((Te[i][j], tsn), axis=0), np.transpose(W))))
+#                    tsn[alpha] = -1
+#                    eng2 = np.sum(f(np.dot(np.concatenate((Te[i][j], tsn), axis=0), np.transpose(W))))
+#                    c[alpha] = np.tanh(B*(eng1-eng2))
+#                confusion_matrix[i][np.argmax(c)] += 1
+#        print("testing error",(1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100)
+#        error_testing[epoch] = (1 - np.sum(np.diagonal(confusion_matrix))/(Nc*100))*100
+#        
         error_obj[epoch] = obj_func
         print(obj_func)
         
