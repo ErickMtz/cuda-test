@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Nov 13 14:47:35 2018
 
-@author: erick
-"""
-import numpy as np     
-import time
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -19,24 +11,24 @@ from numba import guvectorize, float64, int64, jit, prange
 import math
 import os
 import matplotlib.pyplot as plt
-#
-#@guvectorize([(float64[:,:], float64[:], float64[:,:], int64, float64, float64[:,:])], '(K,NT),(Nc),(M,N),(),()->(M,Nc)', target='parallel', nopython=True)
-#def calculateCinMinibatch(W,auxi,v,n,B,c):
-#    M,N = v.shape
-#    K,Nc = W.shape[0],(W.shape[1]-N)
-#    aux = 0
-#    for A in range(M):
-#        for alpha in range(Nc):
-#            aux2 = 0
-#            for miu in range(K):
-#                aux1 = 0
-#                for i in range(N):
-#                    if W[miu][i] * v[A][i] >= 0:
-#                        aux += math.pow(W[miu][i] * v[A][i], n)
-#                    else: 
-#                        aux = 0
-#                aux2 += W[miu][N+alpha] * aux1
-#            c[A][alpha] = math.tanh(B*aux2)
+
+@guvectorize([(float64[:,:], float64[:], float64[:,:], int64, float64, float64[:,:])], '(K,NT),(Nc),(M,N),(),()->(M,Nc)', target='parallel', nopython=True)
+def calculateCinMinibatch(W,auxi,v,n,B,c):
+    M,N = v.shape
+    K,Nc = W.shape[0],(W.shape[1]-N)
+    aux = 0
+    for A in prange(M):
+        for alpha in prange(Nc):
+            aux2 = 0
+            for miu in prange(K):
+                aux1 = 0
+                for i in prange(N):
+                    if W[miu][i] * v[A][i] >= 0:
+                        aux += math.pow(W[miu][i] * v[A][i], n)
+                    else: 
+                        aux = 0
+                aux2 += W[miu][N+alpha] * aux1
+            c[A][alpha] = math.tanh(B*aux2)
 
 
 @jit(nopython=True, parallel=True, nogil=True)
@@ -190,7 +182,7 @@ def main():
             
             c2 = c = np.zeros((M,Nc))
             start = time.time()
-            calculateCinMinibatchJit2(W,v,n,B,c2)
+            calculateCinMinibatch(W,W[0,N:N+Nc],v,n,B,c2)
             end = time.time()
             print("C2 Elapsed (after compilation) = %s" % (end - start))
             
@@ -205,7 +197,8 @@ def main():
             end = time.time()
             print("dW2 Elapsed (after compilation) = %s" % (end - start))
             
-            
+
+
             start = time.time()
             updateW(V,dW,e,p,Nc,W)
             obj_func += np.sum(np.power(c-tX,2*m))
@@ -213,11 +206,11 @@ def main():
             print("updateW Elapsed (after compilation) = %s" % (end - start))
         
         confusion_matrix = np.zeros((Nc,Nc), dtype=int)
-        for i in range(Nc):
-            for j in range(len(X[i])):
+        for i in prange(Nc):
+            for j in prange(len(X[i])):
                 tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
                 c = np.zeros(Nc) - 1 
-                for alpha in range(Nc):
+                for alpha in prange(Nc):
                     tsn[alpha] = 1
                     eng1 = np.sum(f(np.dot(np.concatenate((X[i][j], tsn), axis=0), np.transpose(W))))
                     tsn[alpha] = -1
@@ -229,11 +222,11 @@ def main():
         
         
         confusion_matrix = np.zeros((Nc,Nc), dtype=int)
-        for i in range(Nc):
-            for j in range(len(Te[i])):
+        for i in prange(Nc):
+            for j in prange(len(Te[i])):
                 tsn = np.array([-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1.,-1])
                 c = np.zeros(Nc) - 1 
-                for alpha in range(Nc):
+                for alpha in prange(Nc):
                     tsn[alpha] = 1
                     eng1 = np.sum(f(np.dot(np.concatenate((Te[i][j], tsn), axis=0), np.transpose(W))))
                     tsn[alpha] = -1
