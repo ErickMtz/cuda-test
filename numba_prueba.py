@@ -5,7 +5,7 @@
 Created on Tue Nov 13 14:47:35 2018
 @author: erick
 """
-import numpy as np     
+@import numpy as np     
 import time
 from numba import jit, prange
 import math
